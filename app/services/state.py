@@ -18,7 +18,19 @@ class NewsItem:
 
 @dataclass
 class Portfolio:
-    holdings: Dict[str, float]  # symbol -> weight or quantity
+    holdings: Dict[str, float]  # symbol -> quantity
+    cash_balance: float = 10000.0  # Starting cash balance
+    transactions: List[Dict[str, Any]] = field(default_factory=list)  # Transaction history
+
+@dataclass
+class TradeTransaction:
+    timestamp: float
+    symbol: str
+    action: str  # 'buy' or 'sell'
+    quantity: float
+    price: float
+    total_value: float
+    transaction_id: str
 
 class AppState:
     def __init__(self) -> None:

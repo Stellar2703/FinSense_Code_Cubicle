@@ -8,6 +8,8 @@ class FinSenseApp {
     this.newsData = [];
     this.alertsData = [];
     this.currentSymbol = 'TSLA';
+    this.selectedTradeAction = 'buy';
+    this.portfolio = { holdings: {}, total_value: 0, positions: [] };
     
     this.init();
   }
@@ -16,10 +18,16 @@ class FinSenseApp {
     this.setupWebSockets();
     this.setupChart();
     this.setupEventListeners();
+    this.setupTradingForm();
     this.updateTicker();
+    this.updatePortfolio();
+    this.updateMarketOverview();
     
     // Update ticker every 2 seconds
     setInterval(() => this.updateTicker(), 2000);
+    
+    // Update portfolio every 5 seconds
+    setInterval(() => this.updatePortfolio(), 5000);
   }
 
   setupWebSockets() {
@@ -81,6 +89,8 @@ class FinSenseApp {
       this.marketData.set(data.symbol, data);
       this.updateStats();
       this.addToFeed(data, 'price');
+      this.updateTradingPanelPrices();
+      this.updateMarketOverview();
       
       // Update chart if it's the selected symbol
       if (data.symbol === this.currentSymbol) {
@@ -93,6 +103,11 @@ class FinSenseApp {
       this.addToFeed(data, 'news');
       this.updateStats();
       console.log('News feed updated, total news items:', this.newsData.length);
+    } 
+    // Insert trade handler
+    else if (data.type === 'trade') {
+      console.log('Trade event received, updating portfolio', data);
+      this.updatePortfolio();
     } else {
       console.warn('Unknown data type received:', data.type, data);
     }
@@ -523,6 +538,393 @@ class FinSenseApp {
     const visibleItems = document.querySelectorAll('.feed-item[style*="flex"]');
     console.log(`Filter complete: ${visibleItems.length} items visible`);
   }
+
+  // Trading functionality
+  setupTradingForm() {
+    const tradeForm = document.getElementById('tradeForm');
+    const symbolSelect = document.getElementById('tradeSymbol');
+    const quantityInput = document.getElementById('tradeQuantity');
+    
+    console.log('Setting up trading form...', { tradeForm, symbolSelect, quantityInput });
+    
+    if (tradeForm) {
+      tradeForm.addEventListener('submit', (e) => this.executeTrade(e));
+      console.log('Trade form event listener added');
+    }
+    
+    if (symbolSelect) {
+      symbolSelect.addEventListener('change', () => this.updateTradingPanelPrices());
+    }
+    
+    if (quantityInput) {
+      quantityInput.addEventListener('input', () => this.updateEstimatedTotal());
+    }
+    
+    // Set default action to buy and update UI
+    setTimeout(() => {
+      this.selectTradeAction('buy');
+      this.updateTradingPanelPrices();
+      
+      // Set default quantity to make button clickable
+      const quantityInput = document.getElementById('tradeQuantity');
+      if (quantityInput && !quantityInput.value) {
+        quantityInput.value = '1';
+        this.updateEstimatedTotal();
+      }
+    }, 500); // Increased delay to make sure market data has time to load
+  }
+
+  selectTradeAction(action) {
+    console.log('Selecting trade action:', action);
+    this.selectedTradeAction = action;
+    
+    const buyBtn = document.getElementById('buyBtn');
+    const sellBtn = document.getElementById('sellBtn');
+    
+    if (action === 'buy') {
+      buyBtn.className = 'flex-1 py-2 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors';
+      sellBtn.className = 'flex-1 py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors';
+    } else {
+      buyBtn.className = 'flex-1 py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors';
+      sellBtn.className = 'flex-1 py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors';
+    }
+  }
+
+  async executeTrade(event) {
+    event.preventDefault();
+    console.log('Executing trade...');
+    
+    const symbol = document.getElementById('tradeSymbol').value;
+    const quantity = parseFloat(document.getElementById('tradeQuantity').value);
+    const action = this.selectedTradeAction;
+    
+    console.log('Trade details:', { symbol, quantity, action });
+    
+    if (!symbol || !quantity || quantity <= 0) {
+      showNotification('Please enter a valid quantity', 'error');
+      return;
+    }
+    
+    const executeBtn = document.getElementById('executeTradeBtn');
+    executeBtn.disabled = true;
+    executeBtn.textContent = 'Processing...';
+    
+    try {
+      console.log('Sending trade request to /trading/execute');
+      const response = await fetch('/trading/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: symbol,
+          action: action,
+          quantity: quantity
+        })
+      });
+      
+      console.log('Trade response status:', response.status);
+      const result = await response.json();
+      console.log('Trade result:', result);
+      
+      if (result.success) {
+        showNotification(result.message, 'success');
+        document.getElementById('tradeQuantity').value = '';
+        this.updatePortfolio();
+        
+        // Add visual feedback - show the trade in the feed immediately
+        this.showTradeConfirmation(symbol, action, quantity, result.executed_price);
+      } else {
+        showNotification(result.message || 'Trade failed', 'error');
+      }
+    } catch (error) {
+      console.error('Trade execution error:', error);
+      showNotification('Failed to execute trade: ' + error.message, 'error');
+    } finally {
+      executeBtn.disabled = false;
+      executeBtn.textContent = 'Execute Trade';
+    }
+  }
+
+  showTradeConfirmation(symbol, action, quantity, price) {
+    // Create a visual confirmation
+    const confirmationDiv = document.createElement('div');
+    confirmationDiv.className = 'fixed top-20 right-6 z-50 bg-gradient-to-r from-green-600 to-blue-600 text-white p-4 rounded-lg shadow-lg animate-fade-in';
+    confirmationDiv.innerHTML = `
+      <div class="flex items-center gap-3">
+        <i data-lucide="check-circle" class="w-6 h-6"></i>
+        <div>
+          <div class="font-bold">Trade Executed!</div>
+          <div class="text-sm">${action.toUpperCase()} ${quantity} ${symbol} @ $${price.toFixed(2)}</div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(confirmationDiv);
+    
+    // Initialize Lucide icons
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      confirmationDiv.remove();
+    }, 3000);
+  }
+
+  updateTradingPanelPrices() {
+    const symbol = document.getElementById('tradeSymbol')?.value;
+    if (!symbol) return;
+    
+    const marketData = this.marketData.get(symbol);
+    let price = marketData ? marketData.price : 0;
+    
+    // Use fallback price if no market data yet
+    if (price === 0) {
+      const fallbackPrices = {
+        'TSLA': 400,
+        'AAPL': 250,
+        'GOOGL': 250,
+        'MSFT': 500,
+        'NVDA': 175
+      };
+      price = fallbackPrices[symbol] || 100;
+    }
+    
+    console.log('updateTradingPanelPrices:', { symbol, marketData, price });
+    
+    const currentPriceElement = document.getElementById('currentPrice');
+    if (currentPriceElement) {
+      currentPriceElement.textContent = `$${price.toFixed(2)}`;
+    }
+    
+    this.updateEstimatedTotal();
+  }
+
+  updateEstimatedTotal() {
+    const symbol = document.getElementById('tradeSymbol')?.value;
+    const quantity = parseFloat(document.getElementById('tradeQuantity')?.value) || 0;
+    
+    console.log('updateEstimatedTotal:', { symbol, quantity });
+    
+    if (!symbol || quantity <= 0) {
+      document.getElementById('estimatedTotal').textContent = '$0.00';
+      document.getElementById('executeTradeBtn').disabled = true;
+      console.log('Button disabled: invalid quantity or symbol');
+      return;
+    }
+    
+    const marketData = this.marketData.get(symbol);
+    let price = marketData ? marketData.price : 0;
+    
+    // Fallback: If no market data yet, use a reasonable default price for demo
+    if (price === 0) {
+      const fallbackPrices = {
+        'TSLA': 400,
+        'AAPL': 250,
+        'GOOGL': 250,
+        'MSFT': 500,
+        'NVDA': 175
+      };
+      price = fallbackPrices[symbol] || 100;
+      console.log('Using fallback price:', price, 'for', symbol);
+    }
+    
+    const total = price * quantity;
+    
+    console.log('Market data:', { marketData, price, total });
+    
+    document.getElementById('estimatedTotal').textContent = `$${total.toFixed(2)}`;
+    const shouldDisable = total === 0;
+    document.getElementById('executeTradeBtn').disabled = shouldDisable;
+    
+    console.log('Button disabled:', shouldDisable, 'total:', total);
+  }
+
+  async updatePortfolio() {
+    try {
+      console.log('Updating portfolio...');
+      const response = await fetch('/trading/portfolio');
+      const portfolio = await response.json();
+      
+      console.log('Portfolio data received:', portfolio);
+      this.portfolio = portfolio;
+      this.displayPortfolio(portfolio);
+      
+      // Also fetch and display transaction history
+      const transactionResponse = await fetch('/trading/transactions');
+      const transactionData = await transactionResponse.json();
+      this.displayTransactionHistory(transactionData);
+    } catch (error) {
+      console.error('Error updating portfolio:', error);
+    }
+  }
+
+  displayPortfolio(portfolio) {
+    console.log('Displaying enhanced portfolio:', portfolio);
+    
+    // Update main portfolio value
+    const portfolioValue = document.getElementById('portfolioValue');
+    if (portfolioValue) {
+      portfolioValue.textContent = `$${portfolio.total_value.toFixed(2)}`;
+    }
+    
+    // Update financial summary cards
+    const totalPortfolioValue = document.getElementById('totalPortfolioValue');
+    const holdingsValue = document.getElementById('holdingsValue');
+    const cashBalance = document.getElementById('cashBalance');
+    const totalPnL = document.getElementById('totalPnL');
+    const pnlPercentage = document.getElementById('pnlPercentage');
+    const totalInvested = document.getElementById('totalInvested');
+    const portfolioAllocation = document.getElementById('portfolioAllocation');
+    
+    if (totalPortfolioValue) {
+      totalPortfolioValue.textContent = `$${portfolio.total_portfolio_value.toFixed(2)}`;
+    }
+    
+    if (holdingsValue) {
+      holdingsValue.textContent = `$${portfolio.total_value.toFixed(2)}`;
+    }
+    
+    if (cashBalance) {
+      cashBalance.textContent = `$${portfolio.cash_balance.toFixed(2)}`;
+    }
+    
+    // Update P&L with color coding
+    if (totalPnL) {
+      const pnlValue = portfolio.total_pnl || 0;
+      totalPnL.textContent = `${pnlValue >= 0 ? '+' : ''}$${pnlValue.toFixed(2)}`;
+      totalPnL.className = `text-xl font-bold ${pnlValue >= 0 ? 'text-green-400' : 'text-red-400'}`;
+      
+      // Update P&L icon
+      const pnlIcon = document.getElementById('pnlIcon');
+      if (pnlIcon) {
+        pnlIcon.className = `w-3 h-3 ${pnlValue >= 0 ? 'text-green-500' : 'text-red-500'}`;
+      }
+    }
+    
+    if (pnlPercentage) {
+      const pnlPercent = portfolio.total_pnl_percentage || 0;
+      pnlPercentage.innerHTML = `<span class="text-gray-400">${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}% return</span>`;
+    }
+    
+    // Update invested amount and allocation
+    if (totalInvested) {
+      const investedAmount = portfolio.total_invested || 0;
+      totalInvested.textContent = `$${investedAmount.toFixed(2)}`;
+    }
+    
+    if (portfolioAllocation) {
+      const totalValue = portfolio.total_portfolio_value || 10000;
+      const investedAmount = portfolio.total_invested || 0;
+      const allocationPercent = totalValue > 0 ? (investedAmount / totalValue * 100) : 0;
+      portfolioAllocation.innerHTML = `<span class="text-gray-400">${allocationPercent.toFixed(1)}% allocated</span>`;
+    }
+    
+    // Update portfolio change in header
+    const portfolioChange = document.getElementById('portfolioChange');
+    if (portfolioChange) {
+      const changePercent = portfolio.total_pnl_percentage || 0;
+      portfolioChange.textContent = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+      portfolioChange.className = `text-xs ${changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`;
+    }
+    
+    // Render holdings cards from backend data
+    const portfolioHoldings = document.getElementById('portfolioHoldings');
+    if (portfolioHoldings) {
+      const holdings = portfolio.holdings || {};
+      const entries = Object.entries(holdings);
+      if (entries.length > 0) {
+        portfolioHoldings.innerHTML = entries.map(([sym, qty]) => {
+          const pos = (portfolio.positions || []).find(p => p.symbol === sym) || {};
+          const price = pos.current_price || 0;
+          const value = qty * price;
+          return `
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 flex justify-between">
+              <div class="text-white font-medium">${sym} (${qty} shares)</div>
+              <div class="text-white font-medium">$${value.toFixed(2)}</div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        portfolioHoldings.innerHTML = `
+          <div class="text-sm text-gray-400 text-center py-4">
+            No holdings yet. Start trading to build your portfolio.
+          </div>
+        `;
+      }
+    }
+  }
+
+  displayTransactionHistory(data) {
+    const recentTransactions = document.getElementById('recentTransactions');
+    if (!recentTransactions) return;
+    
+    if (data.transactions.length === 0) {
+      recentTransactions.innerHTML = `
+        <div class="text-sm text-gray-400 text-center py-4">
+          No transactions yet.
+        </div>
+      `;
+    } else {
+      recentTransactions.innerHTML = data.transactions.map(transaction => {
+        const actionClass = transaction.action === 'buy' ? 'text-green-400' : 'text-red-400';
+        const actionIcon = transaction.action === 'buy' ? 'trending-up' : 'trending-down';
+        const actionText = transaction.action === 'buy' ? 'Bought' : 'Sold';
+        
+        return `
+          <div class="bg-gray-800/30 rounded-lg p-3 border border-gray-700">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-6 h-6 rounded-full ${transaction.action === 'buy' ? 'bg-green-500/20' : 'bg-red-500/20'} flex items-center justify-center">
+                  <i data-lucide="${actionIcon}" class="w-3 h-3 ${actionClass}"></i>
+                </div>
+                <div>
+                  <div class="text-sm font-medium text-white">
+                    ${actionText} ${transaction.quantity} ${transaction.symbol}
+                  </div>
+                  <div class="text-xs text-gray-400">${transaction.date}</div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-sm font-semibold text-white">$${transaction.price.toFixed(2)}</div>
+                <div class="text-xs text-gray-400">$${transaction.total_value.toFixed(2)} total</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // Re-initialize Lucide icons for the new content
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }
+
+  updateMarketOverview() {
+    const marketOverview = document.getElementById('marketOverview');
+    if (!marketOverview) return;
+    
+    const symbols = ['TSLA', 'AAPL', 'GOOGL', 'MSFT', 'NVDA'];
+    
+    marketOverview.innerHTML = symbols.map(symbol => {
+      const data = this.marketData.get(symbol);
+      const price = data ? data.price : 0;
+      const change = data ? data.change_percent || 0 : 0;
+      const changeClass = change >= 0 ? 'text-green-400' : 'text-red-400';
+      const changeSign = change >= 0 ? '+' : '';
+      
+      return `
+        <div class="flex items-center justify-between py-2">
+          <span class="font-medium text-white text-sm">${symbol}</span>
+          <div class="text-right">
+            <div class="text-sm font-semibold text-white">$${price.toFixed(2)}</div>
+            <div class="${changeClass} text-xs">${changeSign}${change.toFixed(1)}%</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
 }
 
 // Enhanced chat functionality
@@ -560,6 +962,8 @@ function sendQuestion(event) {
   .then(response => response.text())
   .then(answer => {
     hideTypingIndicator();
+    // Replace literal \n with actual newlines before passing to the chat
+    answer = answer.replace(/\\n/g, '\n');
     addChatMessage(answer, 'assistant');
   })
   .catch(error => {
@@ -584,6 +988,11 @@ function addChatMessage(message, sender) {
   let formattedMessage = message;
   
   if (sender === 'assistant') {
+    // Normalize Windows CRLF just in case
+    message = message.replace(/\r\n/g, '\n');
+    // If backend still sent escaped \n sequences, convert them
+    message = message.replace(/\\n/g, '\n');
+    
     // Convert Trading Buddy formatting to HTML
     formattedMessage = formatTradingBuddyResponse(message);
   } else {
@@ -661,6 +1070,16 @@ function hideTypingIndicator() {
 }
 
 function formatTradingBuddyResponse(text) {
+  // Trim stray quotes/newlines
+  text = text.trim();
+  // Convert any literal "\n" sequences (backslash + n) into actual newlines first
+  // This handles cases where the backend response was still escaped
+  if (text.includes('\\n')) {
+    text = text.replace(/\\n/g, '\n');
+  }
+  // Replace multiple blank lines with two to standardize
+  text = text.replace(/\n{3,}/g, '\n\n');
+  
   // Convert Trading Buddy markdown-like formatting to HTML
   let formatted = escapeHtml(text);
   
@@ -735,6 +1154,83 @@ function triggerFakeNews() {
   .catch(error => {
     console.error('Error:', error);
   });
+}
+
+// Trading functions
+function selectTradeAction(action) {
+  console.log('Global selectTradeAction called:', action);
+  
+  // Update the app instance
+  if (window.finSenseApp) {
+    window.finSenseApp.selectTradeAction(action);
+  } else {
+    console.error('finSenseApp not found on window');
+  }
+}
+
+// Enable trade button manually (for debugging)
+function enableTradeButton() {
+  const btn = document.getElementById('executeTradeBtn');
+  const symbol = document.getElementById('tradeSymbol').value;
+  const quantity = document.getElementById('tradeQuantity').value;
+  
+  if (btn) {
+    btn.disabled = false;
+    console.log('Trade button manually enabled');
+    showNotification('Trade button enabled! Make sure to enter quantity first.', 'info');
+  }
+  
+  // Force update the prices and total
+  if (window.finSenseApp) {
+    window.finSenseApp.updateTradingPanelPrices();
+    
+    // Set default values if empty
+    if (!quantity) {
+      document.getElementById('tradeQuantity').value = '1';
+      window.finSenseApp.updateEstimatedTotal();
+    }
+  }
+}
+
+// Test function for debugging
+async function testTradeSystem() {
+  console.log('Testing trade system...');
+  
+  try {
+    // Test the trading endpoint
+    const testResponse = await fetch('/trading/test');
+    const testResult = await testResponse.json();
+    console.log('Trade system test:', testResult);
+    
+    if (testResult.status === 'ok') {
+      showNotification('Trading system test passed!', 'success');
+      
+      // Try a small test trade
+      const tradeResponse = await fetch('/trading/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: 'TSLA',
+          action: 'buy',
+          quantity: 0.1
+        })
+      });
+      
+      const tradeResult = await tradeResponse.json();
+      console.log('Test trade result:', tradeResult);
+      
+      if (tradeResult.success) {
+        showNotification('Test trade executed successfully!', 'success');
+      } else {
+        showNotification('Test trade failed: ' + tradeResult.message, 'error');
+      }
+    } else {
+      showNotification('Trading system test failed', 'error');
+    }
+  } catch (error) {
+    console.error('Test trade system error:', error);
+    showNotification('Test failed: ' + error.message, 'error');
+  }
 }
 
 // Payment Guard Functions
@@ -865,5 +1361,5 @@ function showNotification(message, type = 'info') {
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  new FinSenseApp();
+  window.finSenseApp = new FinSenseApp();
 });

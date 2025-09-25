@@ -846,3 +846,148 @@
   text-align: center;
   color: #6B7280;
 }
+
+/* Trading specific styles */
+.feed-item.trade {
+  background: rgba(139, 92, 246, 0.1);
+  border-left: 3px solid #8B5CF6;
+}
+
+.trade-action-btn {
+  transition: all 0.2s ease;
+  border: none;
+  outline: none;
+}
+
+.trade-action-btn:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.portfolio-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.2);
+}
+
+.portfolio-item:last-child {
+  border-bottom: none;
+}
+
+.portfolio-symbol {
+  font-weight: 600;
+  color: #E5E7EB;
+  font-size: 14px;
+}
+
+.portfolio-quantity {
+  color: #9CA3AF;
+  font-size: 12px;
+}
+
+.portfolio-value {
+  text-align: right;
+}
+
+.portfolio-price {
+  font-weight: 600;
+  color: #E5E7EB;
+  font-size: 14px;
+}
+
+.portfolio-percentage {
+  color: #9CA3AF;
+  font-size: 12px;
+}
+
+.market-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.market-symbol {
+  font-weight: 500;
+  color: #E5E7EB;
+  font-size: 14px;
+}
+
+.market-price {
+  font-weight: 600;
+  color: #E5E7EB;
+  font-size: 14px;
+}
+
+.market-change {
+  font-size: 12px;
+}
+
+.trade-form input:focus,
+.trade-form select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+.trade-summary {
+  background: rgba(31, 41, 55, 0.7);
+  border: 1px solid rgba(75, 85, 99, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.execute-trade-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.execute-trade-btn:disabled:hover {
+  transform: none;
+}
+
+/* Trade confirmation animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Better trade form styling */
+.trade-form {
+  background: rgba(31, 41, 55, 0.7);
+  border-radius: 8px;
+}
+
+.trade-button-group {
+  display: flex;
+  gap: 8px;
+}
+
+.trade-action-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.trade-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.trade-action-btn:active {
+  transform: translateY(0);
+}

@@ -1197,16 +1197,40 @@ function uploadPortfolio(event) {
   if (!file) return;
   
   const formData = new FormData();
-  formData.append('portfolio', file);
+  formData.append('file', file); // use 'file' field for broader compatibility
   
   fetch('/upload-portfolio', {
     method: 'POST',
     body: formData
   })
-  .then(response => response.text())
-  .then(result => {
-    // Show success message
+  .then(async r => {
+    const ct = r.headers.get('content-type') || '';
+    if (!r.ok) {
+      const text = await r.text();
+      throw new Error(text || 'Upload failed');
+    }
+    let result = null;
+    if (ct.includes('application/json')) {
+      result = await r.json();
+    } else {
+      // Fallback: attempt to parse plain text
+      const text = await r.text();
+      try { result = JSON.parse(text); } catch { result = { raw: text }; }
+    }
     showNotification('Portfolio uploaded successfully!', 'success');
+    // Auto-fetch analysis if backend did not include it
+    if (!result.analysis) {
+      try {
+        const a = await fetch('/trading/portfolio/analysis').then(r2 => r2.json());
+        if (a && a.summary_text) {
+          addChatMessage(a.summary_text, 'assistant');
+        }
+      } catch (e) {
+        console.warn('Analysis fetch failed', e);
+      }
+    } else if (result.analysis.summary_text) {
+      addChatMessage(result.analysis.summary_text, 'assistant');
+    }
   })
   .catch(error => {
     showNotification('Error uploading portfolio', 'error');

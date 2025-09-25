@@ -131,10 +131,22 @@ async def trigger_fake_news():
     return {"status": "success", "symbol": symbol, "headline": headline}
 
 @app.post("/upload-portfolio")
-async def upload_portfolio(file: UploadFile = File(...)):
-    content = await file.read()
-    await state.load_portfolio_json(content)
-    return {"ok": True}
+async def upload_portfolio(
+    file: UploadFile = File(None),
+    portfolio: UploadFile = File(None)
+):
+    # Accept either field name for flexibility
+    selected = file or portfolio
+    if not selected:
+        return PlainTextResponse("No file uploaded (expected form field 'file' or 'portfolio').", status_code=400)
+    try:
+        content = await selected.read()
+        await state.load_portfolio_json(content)
+        from .routers.trading import _compute_portfolio_analysis
+        analysis = _compute_portfolio_analysis(state)
+        return {"ok": True, "analysis": analysis}
+    except Exception as e:
+        return PlainTextResponse(f"Failed to load portfolio: {e}", status_code=400)
 
 app.include_router(demo_router.router)
 app.include_router(realtime_router.router)

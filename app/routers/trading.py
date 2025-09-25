@@ -4,6 +4,7 @@ from typing import Dict, Any
 import time
 from ..services.state import AppState
 from ..services.alerts import AlertBroker
+from math import isfinite
 
 router = APIRouter(prefix="/trading", tags=["trading"])
 
@@ -23,6 +24,70 @@ class TradeResponse(BaseModel):
     transaction_id: str = None
     executed_price: float = None
     portfolio_value: float = None
+
+def _compute_portfolio_analysis(state: AppState) -> Dict[str, Any]:
+    if not state or not state.portfolio or not state.portfolio.holdings:
+        return {"summary_text": "No portfolio loaded.", "symbols": [], "total_value": 0}
+
+    holdings = state.portfolio.holdings
+    analysis_symbols = []
+    total_value = 0.0
+    lines = []
+    risk_up = 0.0
+    risk_down = 0.0
+
+    # Gather positions
+    for sym, qty in holdings.items():
+        price = state.prices.get(sym, 0) or 0
+        if price <= 0:
+            # fallback if no price yet
+            fallback_prices = {"TSLA":400.0,"AAPL":250.0,"GOOGL":250.0,"MSFT":500.0,"NVDA":175.0}
+            price = fallback_prices.get(sym, 100.0)
+            state.prices[sym] = price
+        value = qty * price
+        total_value += value
+        risk_up += value * 0.05
+        risk_down += value * 0.05
+        sell10_qty = max(qty * 0.10, 0)
+        buy10_qty = max(qty * 0.10, 0)
+        sell10_proceeds = sell10_qty * price
+        buy10_cost = buy10_qty * price
+        analysis_symbols.append({
+            "symbol": sym,
+            "quantity": qty,
+            "price": price,
+            "value": value,
+            "sell10_qty": sell10_qty,
+            "sell10_proceeds": sell10_proceeds,
+            "buy10_qty": buy10_qty,
+            "buy10_cost": buy10_cost
+        })
+
+    # Sort by value desc
+    analysis_symbols.sort(key=lambda x: x["value"], reverse=True)
+    top = analysis_symbols[0]
+
+    for s in analysis_symbols[:3]:
+        lines.append(f"• {s['symbol']}: {s['quantity']} @ ${s['price']:.2f} = ${s['value']:.2f}")
+    lines.append("")
+    lines.append("Scenarios (10% slice):")
+    for s in analysis_symbols[:3]:
+        lines.append(f"  - Sell 10% {s['symbol']} ({s['sell10_qty']:.2f}) → +${s['sell10_proceeds']:.2f} cash")
+        lines.append(f"  - Buy 10% more {s['symbol']} ({s['buy10_qty']:.2f}) costs ${s['buy10_cost']:.2f}")
+    lines.append("")
+    lines.append(f"1-day +/-5% move impact: +${risk_up:.2f} / -${risk_down:.2f}")
+    lines.append(f"Top holding: {top['symbol']} ({top['value']/total_value*100:.1f}% of equity value)")
+
+    summary_text = (
+        f"Portfolio loaded (total equity value ${total_value:.2f}).\n" + "\n".join(lines)
+    )
+    return {
+        "summary_text": summary_text,
+        "symbols": analysis_symbols,
+        "total_value": total_value,
+        "risk_up_5pct": risk_up,
+        "risk_down_5pct": risk_down,
+    }
 
 @router.get("/test")
 async def test_trading():
@@ -245,8 +310,12 @@ async def get_portfolio():
         "total_pnl_percentage": total_pnl_percentage,
         "daily_pnl": daily_pnl,
         "daily_pnl_percentage": daily_pnl_percentage,
-        "positions": positions
+    "positions": positions
     }
+
+@router.get("/portfolio/analysis")
+async def get_portfolio_analysis():
+    return _compute_portfolio_analysis(state)
 
 @router.get("/transactions")
 async def get_transaction_history():

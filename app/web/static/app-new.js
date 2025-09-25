@@ -70,15 +70,11 @@ class FinSenseApp {
 
   updateConnectionStatus(type, connected) {
     const element = document.getElementById(type === 'market' ? 'marketStatus' : 'alertsStatus');
-    const dot = element.querySelector('.w-2');
-    
-    if (connected) {
-      dot.className = 'w-2 h-2 bg-green-500 rounded-full animate-pulse';
-      element.classList.add('connected');
-    } else {
-      dot.className = 'w-2 h-2 bg-red-500 rounded-full animate-pulse';
-      element.classList.remove('connected');
-    }
+  const dot = element.querySelector('.status-indicator-dot');
+  if (!dot) return;
+  dot.classList.remove('bg-green-500','bg-red-500');
+  dot.classList.add(connected ? 'bg-green-500' : 'bg-red-500');
+  element.classList.toggle('connected', connected);
   }
 
   handleMarketData(data) {
@@ -743,12 +739,20 @@ class FinSenseApp {
   async updatePortfolio() {
     try {
       console.log('Updating portfolio...');
-      const response = await fetch('/trading/portfolio');
+      const response = await fetch('/trading/portfolio', { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
       const portfolio = await response.json();
       
       console.log('Portfolio data received:', portfolio);
       this.portfolio = portfolio;
       this.displayPortfolio(portfolio);
+      // If we have value but no rendered holdings yet, schedule a second pass
+      setTimeout(() => {
+        const container = document.getElementById('portfolioHoldings');
+        if (portfolio.total_value > 0 && container && /No holdings yet/i.test(container.innerText)) {
+          console.log('Holdings fallback rerender triggered');
+          this.displayPortfolio(this.portfolio);
+        }
+      }, 500);
       
       // Also fetch and display transaction history
       const transactionResponse = await fetch('/trading/transactions');
@@ -798,7 +802,14 @@ class FinSenseApp {
       // Update P&L icon
       const pnlIcon = document.getElementById('pnlIcon');
       if (pnlIcon) {
-        pnlIcon.className = `w-3 h-3 ${pnlValue >= 0 ? 'text-green-500' : 'text-red-500'}`;
+        const newCls = `w-3 h-3 ${pnlValue >= 0 ? 'text-green-500' : 'text-red-500'}`;
+        try {
+          // For regular HTMLElements
+          pnlIcon.className = newCls;
+        } catch (e) {
+          // Fallback for SVG elements where className is SVGAnimatedString
+            pnlIcon.setAttribute('class', newCls);
+        }
       }
     }
     
@@ -831,26 +842,85 @@ class FinSenseApp {
     // Render holdings cards from backend data
     const portfolioHoldings = document.getElementById('portfolioHoldings');
     if (portfolioHoldings) {
-      const holdings = portfolio.holdings || {};
-      const entries = Object.entries(holdings);
-      if (entries.length > 0) {
-        portfolioHoldings.innerHTML = entries.map(([sym, qty]) => {
-          const pos = (portfolio.positions || []).find(p => p.symbol === sym) || {};
-          const price = pos.current_price || 0;
-          const value = qty * price;
+  const positions = portfolio.positions || [];
+  if (positions.length > 0) {
+        portfolioHoldings.innerHTML = positions.map(pos => {
+          const pnlColor = pos.pnl >= 0 ? 'text-green-400' : 'text-red-400';
           return `
-            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 flex justify-between">
-              <div class="text-white font-medium">${sym} (${qty} shares)</div>
-              <div class="text-white font-medium">$${value.toFixed(2)}</div>
+            <div class="bg-gray-800/60 rounded-lg p-4 border border-gray-700 hover:border-gray-500 transition-colors">
+              <div class="flex justify-between items-start">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-white font-semibold text-sm">${pos.symbol}</span>
+                    <span class="text-xs text-gray-400">${pos.quantity} sh</span>
+                  </div>
+                  <div class="mt-1 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-300">
+                    <div>Price: <span class="text-white font-medium">$${(pos.current_price||0).toFixed(2)}</span></div>
+                    <div>Value: <span class="text-white font-medium">$${(pos.position_value||0).toFixed(2)}</span></div>
+                    <div>Avg Cost: <span class="text-white font-medium">$${(pos.avg_cost||0).toFixed(2)}</span></div>
+                    <div>Cost Basis: <span class="text-white font-medium">$${(pos.cost_basis||0).toFixed(2)}</span></div>
+                    <div>Allocation: <span class="text-white font-medium">${(pos.percentage||0).toFixed(1)}%</span></div>
+                    <div>PnL: <span class="font-medium ${pnlColor}">${pos.pnl>=0?'+':''}$${(pos.pnl||0).toFixed(2)} (${(pos.pnl_percentage||0).toFixed(2)}%)</span></div>
+                  </div>
+                </div>
+              </div>
             </div>
           `;
         }).join('');
       } else {
-        portfolioHoldings.innerHTML = `
-          <div class="text-sm text-gray-400 text-center py-4">
-            No holdings yet. Start trading to build your portfolio.
-          </div>
-        `;
+        // Fallback: positions not yet calculated but holdings dict has entries
+  const holdingsDict = portfolio.holdings || {};
+        const holdingEntries = Object.entries(holdingsDict);
+        if (holdingEntries.length > 0) {
+          portfolioHoldings.innerHTML = holdingEntries.map(([sym, qty]) => {
+            // Try to derive price
+            let currentPrice = 0;
+            const existingPos = positions.find(p => p.symbol === sym) || {};
+            if (existingPos.current_price) currentPrice = existingPos.current_price;
+            else {
+              const md = this.marketData.get(sym);
+              if (md && md.price) currentPrice = md.price;
+            }
+            if (!currentPrice) {
+              const fallbackPrices = { TSLA:400, AAPL:250, GOOGL:250, MSFT:500, NVDA:175, AMZN:220, META:300, NFLX:500, AMD:120, UBER:70 };
+              currentPrice = fallbackPrices[sym] || 0;
+            }
+            const value = qty * currentPrice;
+            // Derive avg cost & cost basis from transactions if available
+            let avgCost = currentPrice;
+            let costBasis = value;
+            if (this.portfolio && Array.isArray(this.portfolio.transactions)) {
+              const buys = this.portfolio.transactions.filter(t => t.symbol === sym && t.action === 'buy');
+              const totalQty = buys.reduce((a,b)=>a + (b.quantity||0),0);
+              const totalSpent = buys.reduce((a,b)=>a + (b.quantity||0)*(b.price||0),0);
+              if (totalQty > 0) {
+                avgCost = totalSpent / totalQty;
+                costBasis = avgCost * qty;
+              }
+            }
+            return `
+              <div class="bg-gray-800/60 rounded-lg p-4 border border-gray-700">
+                <div class="flex justify-between">
+                  <div class="text-white font-semibold text-sm">${sym}</div>
+                  <div class="text-white font-medium">$${value.toFixed(2)}</div>
+                </div>
+                <div class="mt-1 text-xs text-gray-400 flex gap-4 flex-wrap">
+                  <span>${qty} sh</span>
+                  <span>Price $${currentPrice.toFixed(2)}</span>
+                  <span>Avg $${avgCost.toFixed(2)}</span>
+                  <span>Cost Basis $${costBasis.toFixed(2)}</span>
+                  <span class="italic text-gray-500">PnL loading…</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          portfolioHoldings.innerHTML = `
+            <div class="text-sm text-gray-400 text-center py-4">
+              No holdings yet. Start trading to build your portfolio.
+            </div>
+          `;
+        }
       }
     }
   }

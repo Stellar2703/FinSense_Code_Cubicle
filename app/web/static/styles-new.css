@@ -278,6 +278,10 @@
 }
 
 .chat-messages {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 400px; /* Match live-feed height */
   max-height: 400px;
   overflow-y: auto;
   padding: 4px;
@@ -802,7 +806,8 @@
   background: rgba(245, 158, 11, 0.1);
 }
 
-.status-indicator {
+/* Small circular status dot (renamed to avoid conflict with flex container version at top) */
+.status-indicator-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;

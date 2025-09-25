@@ -34,18 +34,23 @@ class TradeTransaction:
 
 class AppState:
     def __init__(self) -> None:
+        # Symbols & market data
         self.symbols: List[str] = self._init_symbols()
         self.prices: Dict[str, float] = {s: 0.0 for s in self.symbols}
         self.price_history: Dict[str, List[PricePoint]] = {s: [] for s in self.symbols}
         self.news: List[NewsItem] = []
+
+        # Portfolio & sanctions
         self.portfolio: Optional[Portfolio] = None
         self.sanctions: Dict[str, float] = {}  # name -> ts_added
 
         # Queues for WS streaming
         self.market_ws_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(maxsize=1000)
 
-        # Fraud baseline per customer
+        # Fraud / behavior tracking
         self.customer_baseline: Dict[str, Dict[str, float]] = {}  # id -> {avg, count}
+        self.payments: List[Dict[str, Any]] = []  # recent payment events
+        self.customer_history: Dict[str, List[float]] = {}  # rolling amounts per customer
 
     def _init_symbols(self) -> List[str]:
         import os

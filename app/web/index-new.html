@@ -31,18 +31,18 @@
             </div>
           </div>
           
-          <div class="flex items-center space-x-4">
-            <div class="flex items-center space-x-2">
-              <div class="status-indicator" id="marketStatus">
-                <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2" id="connectionStatuses">
+              <div class="status-indicator flex items-center gap-1 pr-2 pl-2 py-1" id="marketStatus">
+                <span class="status-indicator-dot bg-red-500"></span>
                 <span class="text-xs text-gray-400">Market</span>
               </div>
-              <div class="status-indicator" id="alertsStatus">
-                <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <div class="status-indicator flex items-center gap-1 pr-2 pl-2 py-1" id="alertsStatus">
+                <span class="status-indicator-dot bg-red-500"></span>
                 <span class="text-xs text-gray-400">Alerts</span>
               </div>
             </div>
-            <button class="glass-button">
+            <button class="glass-button shrink-0">
               <i data-lucide="settings" class="w-4 h-4"></i>
             </button>
           </div>
@@ -117,8 +117,8 @@
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
         
         <!-- Trading Assistant -->
-        <div class="xl:col-span-1">
-          <div class="glass-card h-full">
+        <div class="xl:col-span-1 flex flex-col h-full">
+          <div class="glass-card flex-1 flex flex-col">
             <div class="card-header">
               <div class="flex items-center space-x-3">
                 <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
@@ -132,7 +132,7 @@
               </div>
             </div>
             
-            <div class="p-6 pt-0">
+            <div class="p-6 pt-0 flex flex-col flex-1 overflow-hidden">
               <!-- Quick Actions -->
               <div class="grid grid-cols-2 gap-2 mb-4">
                 <button class="quick-action-btn" onclick="askQuickQuestion('Which stock should I buy today?')">
@@ -226,7 +226,7 @@
       </div>
 
       <!-- Portfolio & Trading -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch h-full">
         
         <!-- Portfolio Dashboard -->
         <div class="glass-card">
@@ -301,19 +301,6 @@
                 <!-- Portfolio holdings will be populated here -->
                 <div class="text-sm text-gray-400 text-center py-4">
                   No holdings yet. Start trading to build your portfolio.
-                </div>
-              </div>
-            </div>
-
-            <!-- Recent Transactions -->
-            <div class="mb-4">
-              <h4 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                <i data-lucide="clock" class="w-4 h-4"></i>
-                Recent Transactions
-              </h4>
-              <div id="recentTransactions" class="space-y-2">
-                <div class="text-sm text-gray-400 text-center py-4">
-                  No transactions yet.
                 </div>
               </div>
             </div>
@@ -397,6 +384,18 @@
                 </div>
               </div>
             </form>
+            <!-- Recent Transactions moved here -->
+            <div class="mt-6">
+              <h4 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                <i data-lucide="clock" class="w-4 h-4"></i>
+                Recent Transactions
+              </h4>
+              <div id="recentTransactions" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <div class="text-sm text-gray-400 text-center py-4">
+                  No transactions yet.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -561,7 +560,8 @@
     </main>
 
     <!-- Scripts -->
-    <script src="/static/app-new.js"></script>
+  <!-- Cache-busted script include to ensure latest JS loads -->
+  <script src="/static/app-new.js?v=3"></script>
     <script>
       // Initialize Lucide icons
       lucide.createIcons();

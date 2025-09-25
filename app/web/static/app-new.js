@@ -22,12 +22,44 @@ class FinSenseApp {
     this.updateTicker();
     this.updatePortfolio();
     this.updateMarketOverview();
+  this.setupFeedFilters();
     
     // Update ticker every 2 seconds
     setInterval(() => this.updateTicker(), 2000);
     
     // Update portfolio every 5 seconds
     setInterval(() => this.updatePortfolio(), 5000);
+  }
+
+  setupFeedFilters() {
+    const buttons = document.querySelectorAll('.feed-filter');
+    if (!buttons.length) return;
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.renderFilteredFeed();
+      });
+    });
+  }
+
+  renderFilteredFeed() {
+    const feed = document.getElementById('liveFeed');
+    if (!feed) return;
+    const activeFilterBtn = document.querySelector('.feed-filter.active');
+    const activeFilter = activeFilterBtn ? activeFilterBtn.getAttribute('data-filter') : 'all';
+    // Rebuild from internal arrays (marketData map & newsData array)
+    feed.innerHTML = '';
+    const items = [];
+    if (activeFilter === 'all' || activeFilter === 'price') {
+      this.marketData.forEach(val => items.push({type: 'price', data: val}));
+    }
+    if (activeFilter === 'all' || activeFilter === 'news') {
+      this.newsData.forEach(n => items.push({type: 'news', data: n}));
+    }
+    // Sort by ts descending if available
+    items.sort((a,b) => (b.data.ts || 0) - (a.data.ts || 0));
+    items.slice(0,30).forEach(entry => this.addToFeed(entry.data, entry.type));
   }
 
   setupWebSockets() {
@@ -256,6 +288,19 @@ class FinSenseApp {
   addToFeed(data, type) {
     console.log(`Adding to feed: type=${type}, data=${JSON.stringify(data)}`);
     const feed = document.getElementById('liveFeed');
+    if (!feed) return;
+
+    // Determine active filter (buttons with .feed-filter)
+    const activeFilterBtn = document.querySelector('.feed-filter.active');
+    const activeFilter = activeFilterBtn ? activeFilterBtn.getAttribute('data-filter') : 'all';
+    // If current filter is 'news' and this is a price update, skip adding
+    if (activeFilter === 'news' && type !== 'news') {
+      return;
+    }
+    // If current filter is 'price' and this is news, skip
+    if (activeFilter === 'price' && type !== 'price') {
+      return;
+    }
     const item = document.createElement('div');
     item.className = `feed-item ${type}`;
     console.log(`Created feed item with className: ${item.className}`);
@@ -307,9 +352,10 @@ class FinSenseApp {
     }
     
     feed.insertBefore(item, feed.firstChild);
-    
-    // Remove old items (keep last 20)
-    while (feed.children.length > 20) {
+
+    // Only remove old items when new ones arrive; preserve existing unless overflowing
+    const MAX_ITEMS = 30;
+    while (feed.children.length > MAX_ITEMS) {
       feed.removeChild(feed.lastChild);
     }
   }

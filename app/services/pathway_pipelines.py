@@ -77,6 +77,19 @@ def run_pathway_pipelines(state, alerts):
         # Create and run pipelines
         market_pipeline = create_market_pipeline(state, alerts)
         news_pipeline = create_news_pipeline(state, alerts)
+
+        # Simple derived anomaly pipeline (illustrative)
+        # In a real scenario you would stream prices into a Pathway table then compute rolling stats.
+        if market_pipeline is not None:
+            try:
+                # Example transformation (no-op placeholder) to show extension point
+                derived = market_pipeline.select(
+                    symbol=pw.this.symbol,
+                    price=pw.this.price,
+                )
+                pw.io.jsonlines.write(derived, "./data/market_derived.jsonl")
+            except Exception as e:
+                print(f"Pathway derived pipeline error: {e}")
         
         if market_pipeline or news_pipeline:
             pw.run()

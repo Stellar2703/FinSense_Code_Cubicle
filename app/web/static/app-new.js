@@ -63,8 +63,12 @@ class FinSenseApp {
   }
 
   setupWebSockets() {
+    // Market and alerts WebSockets
+    // Use secure WebSocket (wss) when the page is loaded over HTTPS to avoid Mixed Content errors.
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsBase = `${wsProtocol}://${window.location.host}`;
     // Market data WebSocket
-    this.marketWS = new WebSocket(`wss://${window.location.host}/ws/market`);
+    this.marketWS = new WebSocket(`${wsBase}/ws/market`);
     
     this.marketWS.onopen = () => {
       console.log('Market WebSocket connected');
@@ -81,8 +85,8 @@ class FinSenseApp {
       this.updateConnectionStatus('market', false);
     };
 
-    // Alerts WebSocket
-    this.alertsWS = new WebSocket(`wss://${window.location.host}/ws/alerts`);
+  // Alerts WebSocket
+  this.alertsWS = new WebSocket(`${wsBase}/ws/alerts`);
     
     this.alertsWS.onopen = () => {
       console.log('Alerts WebSocket connected');

@@ -64,7 +64,7 @@ class FinSenseApp {
 
   setupWebSockets() {
     // Market data WebSocket
-    this.marketWS = new WebSocket(`ws://${window.location.host}/ws/market`);
+    this.marketWS = new WebSocket(`wss://${window.location.host}/ws/market`);
     
     this.marketWS.onopen = () => {
       console.log('Market WebSocket connected');
@@ -82,7 +82,7 @@ class FinSenseApp {
     };
 
     // Alerts WebSocket
-    this.alertsWS = new WebSocket(`ws://${window.location.host}/ws/alerts`);
+    this.alertsWS = new WebSocket(`wss://${window.location.host}/ws/alerts`);
     
     this.alertsWS.onopen = () => {
       console.log('Alerts WebSocket connected');
